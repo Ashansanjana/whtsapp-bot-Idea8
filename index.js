@@ -4,6 +4,12 @@ const qrcode = require('qrcode-terminal');
 const config = require('./config'); // Now this can access process.env variables
 const OpenAI = require('openai');
 const HistoryManager = require('./history');
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const xlsx = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 
 // Initialize Chat History Manager
 let historyManager;
@@ -21,6 +27,40 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Session management variables
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
+const SESSION_PATH = path.join(__dirname, '.wwebjs_auth');
+let isClientReady = false;
+
+// Ensure session directory exists with proper permissions
+if (!fs.existsSync(SESSION_PATH)) {
+  fs.mkdirSync(SESSION_PATH, { recursive: true, mode: 0o755 });
+  console.log('📁 Created session directory');
+}
+
+// Helper: Clear session and restart
+async function clearSessionAndRestart() {
+  console.log('🔄 Clearing corrupted session...');
+  try {
+    if (fs.existsSync(SESSION_PATH)) {
+      fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+      console.log('✅ Session cleared successfully');
+    }
+
+    // Recreate directory
+    fs.mkdirSync(SESSION_PATH, { recursive: true, mode: 0o755 });
+
+    // Wait a bit before reinitializing
+    setTimeout(() => {
+      console.log('🔄 Restarting bot...');
+      process.exit(1); // Let process manager (PM2/nodemon) restart it
+    }, 2000);
+  } catch (error) {
+    console.error('❌ Error clearing session:', error);
+    process.exit(1);
+  }
+}
 
 // Helper: Generate Unique Booking ID
 function generateBookingId() {
@@ -32,7 +72,7 @@ function generateBookingId() {
 
 // Helper: Determine Package Type from Service Category
 function getPackageType(serviceId) {
-  const service = config.services[serviceId];
+  const service = config.services ? config.services[serviceId] : null;
   if (!service) return 'Standard';
 
   const categoryMap = {
@@ -71,27 +111,28 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
       serviceAddress
     } = bookingData;
 
-    // Handle both single service (string) or multiple services (array)
     const serviceArray = Array.isArray(serviceIds) ? serviceIds : [serviceIds];
 
-    // Validate vehicle type
     if (!config.vehicleTypes[vehicleType]) {
       return { success: false, message: `Error: Invalid vehicle type '${vehicleType}'.` };
     }
 
-    const vehicleTypeName = config.vehicleTypes[vehicleType];
+    const vehicleTypeObj = config.vehicleTypes[vehicleType];
+    const vehicleTypeName = vehicleTypeObj.display || vehicleTypeObj;
+    const vehicleKey = vehicleTypeObj.key || vehicleType;
+    const vehicleTypeId = vehicleType;
+
     let totalPrice = 0;
     const serviceNames = [];
 
-    // Validate all services and calculate total price
     for (const serviceId of serviceArray) {
-      const service = config.services[serviceId];
+      const service = config.getServiceById ? config.getServiceById(serviceId) : null;
+
       if (!service) {
         return { success: false, message: `Error: Service '${serviceId}' not found.` };
       }
 
-      // Get price for specific vehicle type
-      const price = service.prices[vehicleType];
+      const price = service.prices[vehicleKey];
       if (price === undefined) {
         return { success: false, message: `Error: No price found for ${service.name} with vehicle type ${vehicleTypeName}.` };
       }
@@ -100,37 +141,27 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
       serviceNames.push(service.name);
     }
 
-    // Parse date and time from ISO string or formatted string
     let preferredDate, preferredTime;
 
     if (startDateTime.includes('T')) {
-      // ISO format: 2026-01-30T10:30:00+05:30
       const dt = new Date(startDateTime);
-      preferredDate = dt.toISOString().split('T')[0]; // YYYY-MM-DD
+      preferredDate = dt.toISOString().split('T')[0];
       const hours = dt.getHours().toString().padStart(2, '0');
       const minutes = dt.getMinutes().toString().padStart(2, '0');
-      preferredTime = `${hours}:${minutes}`; // HH:MM
+      preferredTime = `${hours}:${minutes}`;
     } else {
-      // Assume date and time are already formatted
       preferredDate = startDateTime.split(' ')[0] || startDateTime;
       preferredTime = startDateTime.split(' ')[1] || '10:00';
     }
 
-    // Generate unique booking ID
     const bookingId = generateBookingId();
-
-    // Get primary service name (first service) and package type
     const primaryServiceName = serviceNames[0];
     const packageType = getPackageType(serviceArray[0]);
-
-    // Use user-provided customer info
+    const serviceIdString = serviceArray.join(',');
     const finalCustomerName = customerName || 'Customer';
     const customerPhone = phoneNumber || 'Not provided';
-
-    // Format transcript
     const transcript = conversationHistory ? formatTranscript(conversationHistory) : 'WhatsApp booking conversation';
 
-    // Build webhook payload
     const payload = {
       name: finalCustomerName,
       phone: customerPhone,
@@ -139,8 +170,9 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
         preferred_date: preferredDate,
         preferred_time: preferredTime,
         service_name: primaryServiceName,
+        service_id: serviceIdString,
         package_type: packageType,
-        vehicle_type: vehicleTypeName,
+        vehicle_type: vehicleTypeId,
         vehicle_number: vehicleNumber || '',
         service_address: serviceAddress || '',
         total_price: totalPrice
@@ -151,7 +183,6 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
 
     console.log('📤 Sending booking to webhook:', JSON.stringify(payload, null, 2));
 
-    // Send POST request to webhook
     const fetch = (await import('node-fetch')).default;
     const response = await fetch(config.aiBot.webhook.url, {
       method: 'POST',
@@ -174,7 +205,6 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
     const result = await response.json();
     console.log('✅ Webhook Response:', result);
 
-    // Return success message
     const serviceList = serviceNames.join(', ');
     return {
       success: true,
@@ -223,10 +253,13 @@ async function verifyBookingId(bookingId) {
     const bookingData = await response.json();
     console.log('✅ Booking verified:', bookingData);
 
+    const customerName = bookingData.name || bookingData.customer_name || bookingData.customerName || 'Valued Customer';
+
     return {
       success: true,
-      message: `✅ Booking verified successfully!\n\n📋 Booking ID: ${bookingId}\nYour booking exists in our system.`,
-      bookingData: bookingData
+      message: `✅ Hello ${customerName}! Your booking has been verified.\n\n📋 Booking ID: ${bookingId}`,
+      bookingData: bookingData,
+      customerName: customerName
     };
 
   } catch (error) {
@@ -245,7 +278,6 @@ async function updateBooking(bookingId, updates) {
 
     console.log('🔍 Incoming updates object:', JSON.stringify(updates, null, 2));
 
-    // First, get the existing booking data
     console.log('📥 Fetching existing booking data...');
     const verifyResult = await verifyBookingId(bookingId);
 
@@ -256,11 +288,9 @@ async function updateBooking(bookingId, updates) {
       };
     }
 
-    // Extract existing details
     const existingDetails = verifyResult.bookingData?.details || {};
     console.log('📋 Existing details:', JSON.stringify(existingDetails, null, 2));
 
-    // Merge updates with existing details (updates override existing)
     const mergedDetails = {
       ...existingDetails,
       ...updates
@@ -268,8 +298,6 @@ async function updateBooking(bookingId, updates) {
 
     console.log('🔀 Merged details:', JSON.stringify(mergedDetails, null, 2));
 
-    // Build the payload with complete details object
-    // Backend expects "bookingDetails" not "details"
     const payload = {
       bookingId: bookingId,
       bookingDetails: mergedDetails,
@@ -301,7 +329,6 @@ async function updateBooking(bookingId, updates) {
     const result = await response.json();
     console.log('✅ API Response Body:', JSON.stringify(result, null, 2));
 
-    // Build success message with updated fields
     let updatesList = [];
     if (updates.preferred_date || updates.preferred_time) {
       updatesList.push(`📅 Date & Time: ${updates.preferred_date || 'unchanged'} ${updates.preferred_time || ''}`);
@@ -330,19 +357,30 @@ async function updateBooking(bookingId, updates) {
   }
 }
 
-// Initialize the WhatsApp client
+// Initialize the WhatsApp client with improved configuration
 const puppeteerConfig = {
-  args: config.client.puppeteerArgs
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu',
+    '--disable-software-rasterizer',
+    '--disable-extensions'
+  ]
 };
 
-// Add executablePath if specified in config
 if (config.client.executablePath) {
   puppeteerConfig.executablePath = config.client.executablePath;
 }
 
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: config.client.sessionPath
+    clientId: 'washbot-session', // Unique identifier
+    dataPath: SESSION_PATH
   }),
   webVersionCache: {
     type: 'remote',
@@ -356,20 +394,44 @@ const scheduledMessages = new Map();
 
 // Initialize the bot
 console.log(`🤖 Starting WhatsApp Bot (PID: ${process.pid})...`);
+console.log('📁 Session path:', SESSION_PATH);
 
 // Generate QR Code for authentication
 client.on('qr', (qr) => {
-  console.log('\n📱 Scan this QR code with your WhatsApp:');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📱 QR Code Generated! Scan with WhatsApp:');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   qrcode.generate(qr, { small: true });
   console.log('\n⏳ Waiting for QR code scan...\n');
+  reconnectAttempts = 0; // Reset on QR generation
+});
+
+// Client authenticated
+client.on('authenticated', () => {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔐 Authentication successful!');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  reconnectAttempts = 0;
+});
+
+// Authentication failure
+client.on('auth_failure', async (msg) => {
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('❌ Authentication failure:', msg);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  await clearSessionAndRestart();
 });
 
 // Client is ready
 client.on('ready', async () => {
+  isClientReady = true;
+  reconnectAttempts = 0;
+
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('✅ WhatsApp Bot is ready!');
-  console.log('📞 Connected as:', client.info.pushname);
+  console.log('👤 Connected as:', client.info.pushname);
   console.log('📱 Phone:', client.info.wid.user);
-  console.log('━'.repeat(50));
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // Safety patch for the 'markedUnread' error
   try {
@@ -380,16 +442,15 @@ client.on('ready', async () => {
           try {
             return await originalSendSeen(chatId);
           } catch (e) {
-            return true; // Ignore failures in marking as seen
+            return true;
           }
         };
       }
     });
   } catch (patchError) {
-    console.warn('⚠️ Could not apply sendSeen patch (might not be needed):', patchError.message);
+    console.warn('⚠️ Could not apply sendSeen patch:', patchError.message);
   }
 
-  // Start automatic message sending if enabled
   if (config.autoSend.enabled) {
     startAutoSend();
   }
@@ -398,25 +459,47 @@ client.on('ready', async () => {
     console.log('✉️  Auto-reply is enabled');
   }
 
-  console.log('\n💬 Bot is now listening for messages...\n');
+  console.log('\n📡 Bot is now listening for messages...\n');
 });
 
-// Handle authentication
-client.on('authenticated', () => {
-  console.log('🔐 Authentication successful!');
-});
+// Handle disconnection with reconnection logic
+client.on('disconnected', async (reason) => {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('❌ Client disconnected:', reason);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-// Handle authentication failure
-client.on('auth_failure', (msg) => {
-  console.error('❌ Authentication failed:', msg);
-});
+  isClientReady = false;
 
-// Handle disconnection
-client.on('disconnected', (reason) => {
-  console.log('⚠️  Client was disconnected:', reason);
-  // Clear all scheduled messages
+  // Clear scheduled messages
   scheduledMessages.forEach(interval => clearInterval(interval));
   scheduledMessages.clear();
+
+  // Handle reconnection
+  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+    reconnectAttempts++;
+    console.log(`🔄 Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+
+    setTimeout(async () => {
+      try {
+        console.log('🔄 Reinitializing client...');
+        await client.initialize();
+      } catch (error) {
+        console.error('❌ Reconnection failed:', error.message);
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          console.log('❌ Max reconnection attempts reached. Clearing session...');
+          await clearSessionAndRestart();
+        }
+      }
+    }, 5000);
+  } else {
+    console.log('❌ Max reconnection attempts reached');
+    await clearSessionAndRestart();
+  }
+});
+
+// Loading screen progress
+client.on('loading_screen', (percent, message) => {
+  console.log(`⏳ Loading... ${percent}% - ${message}`);
 });
 
 // Handle incoming messages
@@ -426,37 +509,28 @@ client.on('message', async (message) => {
   processedMessages.add(message.id._serialized);
 
   try {
-    // Get contact info
     const chat = await message.getChat();
     const contact = await message.getContact();
     const customerInfo = {
       name: contact.name || contact.pushname || 'Customer',
-      number: message.from.split('@')[0] // Clean number
+      number: message.from.split('@')[0]
     };
 
-    // Log message if enabled
     if (config.bot.logMessages) {
       console.log(`📨 Message from ${customerInfo.name} (${message.from}): ${message.body}`);
     }
 
-    // Ignore if auto-reply is disabled
     if (!config.autoReply.enabled) return;
-
-    // Ignore own messages
     if (config.bot.ignoreOwnMessages && message.fromMe) return;
-
-    // Ignore broadcast messages if configured
     if (config.bot.ignoreBroadcast && message.from === 'status@broadcast') return;
 
     // Group Message Handling
     if (message.from.endsWith('@g.us')) {
-      if (config.bot.ignoreGroups) return; // Completely ignore if configured
+      if (config.bot.ignoreGroups) return;
 
-      // Check if bot is mentioned
       const mentions = await message.getMentions();
       const isMentioned = mentions.some(contact => contact.id._serialized === client.info.wid._serialized);
 
-      // Check if replying to bot
       let isReplyingToBot = false;
       if (message.hasQuotedMsg) {
         const quotedMsg = await message.getQuotedMessage();
@@ -465,7 +539,6 @@ client.on('message', async (message) => {
         }
       }
 
-      // If not mentioned and not replying to bot, ignore group message
       if (!isMentioned && !isReplyingToBot) {
         return;
       }
@@ -473,7 +546,6 @@ client.on('message', async (message) => {
       console.log('🔔 Bot mentioned or replied to in group. Processing...');
     }
 
-    // Check for keyword matches
     const messageBody = message.body.toLowerCase();
     let replied = false;
 
@@ -484,20 +556,60 @@ client.on('message', async (message) => {
 
         let messages = [];
 
-        // 1. Add System Prompt
-        messages.push({ role: "system", content: config.aiBot.systemPrompt });
+        const now = new Date();
+        const currentDateTime = now.toLocaleString('en-US', {
+          timeZone: 'Asia/Colombo',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
 
-        // 2. Add Chat History (if enabled)
+        // Check conversation history length to determine if this is a new conversation
+        let conversationHistory = [];
+        let isNewConversation = true;
+
         if (historyManager) {
-          const history = historyManager.getMessages(message.from);
-          messages = messages.concat(history);
+          conversationHistory = historyManager.getMessages(message.from);
+          // Consider it a new conversation if there are fewer than 2 messages in history
+          isNewConversation = conversationHistory.length < 2;
         }
 
-        // 3. Add Current User Message
+        const conversationStatus = isNewConversation
+          ? "🆕 CONVERSATION STATUS: This is a NEW conversation (no prior history). You MUST show the language selection prompt."
+          : "🔄 CONVERSATION STATUS: This is a CONTINUING conversation. DO NOT show language selection unless explicitly requested.";
+
+        const systemPromptWithDate = `CURRENT DATE AND TIME: ${currentDateTime} (Sri Lanka Time)
+
+IMPORTANT: Use this current date/time to validate that booking dates and times are NOT in the past.
+
+${conversationStatus}
+
+${config.aiBot.systemPrompt}`;
+
+        messages.push({ role: "system", content: systemPromptWithDate });
+
+        if (historyManager) {
+          messages = messages.concat(conversationHistory);
+        }
+
         const userMessage = { role: "user", content: message.body };
         messages.push(userMessage);
 
-        // Define tools
+        const allServiceIds = [];
+        if (config.packages) {
+          if (config.packages.Standard) {
+            allServiceIds.push(...config.packages.Standard.map(s => s.id));
+          }
+          if (config.packages.AutoGlym) {
+            allServiceIds.push(...config.packages.AutoGlym.map(s => s.id));
+          }
+        } else if (config.services) {
+          allServiceIds.push(...Object.keys(config.services));
+        }
+
         const tools = [
           {
             type: "function",
@@ -511,14 +623,14 @@ client.on('message', async (message) => {
                     type: "array",
                     items: {
                       type: "string",
-                      enum: Object.keys(config.services)
+                      enum: allServiceIds
                     },
                     description: "Array of service IDs to book (e.g., ['wash_vacuum', 'engine_bay_clean']). Can also be a single service ID string."
                   },
                   vehicle_type: {
                     type: "string",
                     enum: Object.keys(config.vehicleTypes),
-                    description: "The vehicle type (car_minivan, crossover, suv, or van)"
+                    description: "The vehicle type ID (car_minivan, crossover, suv, or van)"
                   },
                   start_date_time: {
                     type: "string",
@@ -534,7 +646,7 @@ client.on('message', async (message) => {
                   },
                   email: {
                     type: "string",
-                    description: "Customer email address"
+                    description: "Customer email address (optional - will default to empty string if not provided)"
                   },
                   vehicle_number: {
                     type: "string",
@@ -545,7 +657,7 @@ client.on('message', async (message) => {
                     description: "Customer service/pickup address"
                   },
                 },
-                required: ["service_ids", "vehicle_type", "start_date_time", "customer_name", "phone_number", "email", "vehicle_number", "service_address"],
+                required: ["service_ids", "vehicle_type", "start_date_time", "customer_name", "phone_number", "vehicle_number", "service_address"],
               },
             },
           },
@@ -612,17 +724,34 @@ client.on('message', async (message) => {
         while (loopCount < MAX_LOOPS && !finalReplySent) {
           loopCount++;
 
-          const response = await openai.chat.completions.create({
-            model: config.aiBot.model,
-            messages: messages,
-            tools: tools,
-            tool_choice: "auto",
-          }).catch(err => {
-            console.error('DEBUG OpenAI API Error:', err);
-            throw err;
-          });
+          let response;
+          try {
+            response = await openai.chat.completions.create({
+              model: config.aiBot.model,
+              messages: messages,
+              tools: tools,
+              tool_choice: "auto",
+            });
+          } catch (err) {
+            console.error('❌ OpenAI API Error:', err.message);
+            if (err.response) {
+              console.error('API Response Status:', err.response.status);
+              console.error('API Response Data:', err.response.data);
+            }
+            throw new Error(`OpenAI API failed: ${err.message}`);
+          }
+
+          if (!response || !response.choices || !Array.isArray(response.choices) || response.choices.length === 0) {
+            console.error('❌ Invalid OpenAI response structure:', JSON.stringify(response));
+            throw new Error('Invalid or empty response from OpenAI API');
+          }
 
           const responseMessage = response.choices[0].message;
+
+          if (!responseMessage) {
+            console.error('❌ No message in OpenAI response');
+            throw new Error('No message object in OpenAI response');
+          }
 
           if (responseMessage.tool_calls) {
             messages.push(responseMessage);
@@ -652,7 +781,6 @@ client.on('message', async (message) => {
                 const result = await verifyBookingId(args.booking_id);
                 toolResult = result.message;
               } else if (fnName === 'update_appointment') {
-                // Prepare updates object with only provided fields
                 const updates = {};
                 if (args.preferred_date) updates.preferred_date = args.preferred_date;
                 if (args.preferred_time) updates.preferred_time = args.preferred_time;
@@ -673,13 +801,10 @@ client.on('message', async (message) => {
                 content: toolResult,
               });
             }
-            // Loop continues to process tool results
           } else {
-            // No tool calls, final response
             const aiReply = responseMessage.content;
             if (aiReply) {
               try {
-                const chat = await message.getChat();
                 await chat.sendMessage(aiReply);
                 console.log('✅ AI replied:', aiReply);
               } catch (sendError) {
@@ -693,27 +818,18 @@ client.on('message', async (message) => {
           }
         }
 
-        // Save interaction to history logic
         if (historyManager) {
-          // We need to verify what is new.
-          // messages array:
-          // 0: System
-          // 1..H: Old History
-          // H+1: User Message
-          // H+2..: New Assistant/Tool Messages
-
           const historyLen = historyManager.getMessages(message.from).length;
-          // We expect User Message to be at index (1 + historyLen), wait.
-          // History from manager does NOT include system prompt.
-          // So messages array has: [System, ...History, User, ...]
-          // Length of History part is historyLen.
-          // System is 1.
-          // So User starts at 1 + historyLen.
-
           const newContent = messages.slice(1 + historyLen);
 
           for (const msg of newContent) {
-            historyManager.addMessage(message.from, msg);
+            if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
+              const cleanMsg = {
+                role: msg.role,
+                content: msg.content
+              };
+              historyManager.addMessage(message.from, cleanMsg);
+            }
           }
         }
 
@@ -729,7 +845,6 @@ client.on('message', async (message) => {
       for (const [keyword, response] of Object.entries(config.autoReply.keywords)) {
         if (messageBody.includes(keyword.toLowerCase())) {
           try {
-            const chat = await message.getChat();
             await chat.sendMessage(response);
             console.log(`✅ Auto-replied with keyword: "${keyword}"`);
           } catch (sendError) {
@@ -742,10 +857,8 @@ client.on('message', async (message) => {
       }
     }
 
-    // Send default reply if no keyword matched and default reply is enabled
     if (!replied && config.autoReply.useDefaultReply) {
       try {
-        const chat = await message.getChat();
         await chat.sendMessage(config.autoReply.defaultReply);
         console.log('✅ Auto-replied with default message');
       } catch (sendError) {
@@ -778,19 +891,16 @@ function startAutoSend() {
   config.autoSend.messages.forEach((msgConfig, index) => {
     const { to, message, schedule } = msgConfig;
 
-    // Send immediately if configured
     if (schedule.immediate) {
       setTimeout(() => {
         sendMessage(to, message);
-      }, 1000); // Small delay to ensure client is ready
+      }, 1000);
     }
 
-    // Schedule with delay
     if (schedule.delay > 0 || !schedule.immediate) {
       setTimeout(() => {
         sendMessage(to, message);
 
-        // Set up interval if configured
         if (schedule.interval > 0) {
           const intervalId = setInterval(() => {
             sendMessage(to, message);
@@ -806,16 +916,228 @@ function startAutoSend() {
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\n\n🛑 Shutting down bot...');
+  console.log('\n\n🛑 Shutting down bot gracefully...');
 
-  // Clear all scheduled messages
   scheduledMessages.forEach(interval => clearInterval(interval));
   scheduledMessages.clear();
 
-  await client.destroy();
-  console.log('✅ Bot stopped successfully');
+  try {
+    await client.destroy();
+    console.log('✅ Client destroyed successfully');
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+  }
+
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n\n🛑 Received SIGTERM, shutting down...');
+
+  scheduledMessages.forEach(interval => clearInterval(interval));
+  scheduledMessages.clear();
+
+  try {
+    await client.destroy();
+    console.log('✅ Client destroyed successfully');
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+  }
+
   process.exit(0);
 });
 
 // Start the client
-client.initialize();
+console.log('⏳ Initializing WhatsApp client...\n');
+client.initialize().catch(error => {
+  console.error('❌ Failed to initialize client:', error);
+  clearSessionAndRestart();
+});
+
+// ========================================
+// EXPRESS API SERVER FOR WEB INTERFACE
+// ========================================
+
+const app = express();
+const API_PORT = process.env.API_PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    whatsappReady: isClientReady,
+    connectedAs: client.info ? {
+      name: client.info.pushname,
+      phone: client.info.wid.user
+    } : null,
+    reconnectAttempts: reconnectAttempts
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    ready: isClientReady,
+    info: client.info ? {
+      name: client.info.pushname,
+      phone: client.info.wid.user
+    } : null
+  });
+});
+
+app.post('/api/upload-excel', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded'
+      });
+    }
+
+    const fileExt = req.file.originalname.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls'].includes(fileExt)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file type. Please upload .xlsx or .xls file'
+      });
+    }
+
+    console.log('📊 Processing Excel file:', req.file.originalname);
+
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+
+    const phoneNumbers = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (row && row[0]) {
+        let phone = String(row[0]).trim();
+
+        if (i === 0 && /phone|number|contact|mobile/i.test(phone)) {
+          continue;
+        }
+
+        phone = phone.replace(/[^\d+]/g, '');
+
+        if (phone.length >= 10) {
+          phoneNumbers.push(phone);
+        }
+      }
+    }
+
+    console.log(`✅ Extracted ${phoneNumbers.length} phone numbers`);
+
+    res.json({
+      success: true,
+      phoneNumbers: phoneNumbers,
+      count: phoneNumbers.length
+    });
+
+  } catch (error) {
+    console.error('❌ Excel upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process Excel file: ' + error.message
+    });
+  }
+});
+
+app.post('/api/send-bulk', async (req, res) => {
+  try {
+    const { phoneNumbers, message } = req.body;
+
+    if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Phone numbers array is required and must not be empty'
+      });
+    }
+
+    if (!message || message.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
+      });
+    }
+
+    if (!isClientReady) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp client is not ready. Please wait and try again.'
+      });
+    }
+
+    console.log(`📤 Bulk send request: ${phoneNumbers.length} recipients`);
+
+    const results = [];
+
+    for (let i = 0; i < phoneNumbers.length; i++) {
+      const phoneNumber = phoneNumbers[i];
+      const cleanNumber = phoneNumber.replace(/\D/g, '');
+      const chatId = `${cleanNumber}@c.us`;
+
+      try {
+        await client.sendMessage(chatId, message);
+        console.log(`✅ Sent to +${cleanNumber} (${i + 1}/${phoneNumbers.length})`);
+        results.push({
+          phoneNumber: cleanNumber,
+          success: true,
+          status: 'sent'
+        });
+      } catch (error) {
+        console.error(`❌ Failed to send to +${cleanNumber}:`, error.message);
+        results.push({
+          phoneNumber: cleanNumber,
+          success: false,
+          status: 'failed',
+          error: error.message
+        });
+      }
+
+      if (i < phoneNumbers.length - 1) {
+        const delay = 3000 + Math.random() * 4000;
+        console.log(`⏳ Waiting ${Math.round(delay / 1000)}s before next message...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    console.log(`📊 Summary: ${successful} successful, ${failed} failed`);
+
+    res.json({
+      success: true,
+      summary: {
+        total: phoneNumbers.length,
+        successful,
+        failed
+      },
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ Bulk send error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.listen(API_PORT, () => {
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🌐 Web Interface Server Started');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`📡 Server: http://localhost:${API_PORT}`);
+  console.log(`📋 Web UI: http://localhost:${API_PORT}`);
+  console.log(`🔌 API: http://localhost:${API_PORT}/api/send-bulk`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+});

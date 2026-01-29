@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bulk Message Sender</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="20" cy="20" r="20" fill="url(#gradient)" />
+                    <path
+                        d="M20 10C14.477 10 10 14.477 10 20C10 21.89 10.525 23.66 11.438 25.166L10.5 29.5L15.033 28.587C16.483 29.426 18.183 29.9 20 29.9C25.523 29.9 30 25.423 30 19.9C30 14.377 25.523 10 20 10ZM25.229 24.046C25.014 24.679 24.042 25.217 23.333 25.372C22.858 25.475 22.242 25.554 20.125 24.704C17.417 23.621 15.658 20.846 15.517 20.663C15.383 20.479 14.417 19.225 14.417 17.929C14.417 16.633 15.083 16.004 15.317 15.758C15.55 15.512 15.825 15.454 16.008 15.454C16.192 15.454 16.375 15.458 16.533 15.467C16.7 15.475 16.925 15.413 17.142 15.896C17.367 16.396 17.917 17.692 17.983 17.825C18.05 17.958 18.1 18.117 18.008 18.3C17.917 18.487 17.867 18.596 17.725 18.762C17.583 18.929 17.433 19.137 17.308 19.271C17.167 19.421 17.017 19.583 17.183 19.858C17.35 20.129 17.908 21.067 18.75 21.817C19.817 22.75 20.7 23.042 21 23.167C21.3 23.292 21.467 23.267 21.633 23.083C21.8 22.9 22.325 22.292 22.508 22.017C22.692 21.742 22.875 21.788 23.15 21.892C23.425 21.992 24.7 22.617 24.992 22.763C25.283 22.908 25.483 22.979 25.55 23.1C25.617 23.221 25.617 23.721 25.229 24.046Z"
+                        fill="white" />
+                    <defs>
+                        <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40">
+                            <stop offset="0%" stop-color="#25D366" />
+                            <stop offset="100%" stop-color="#128C7E" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <h1>WhatsApp Bulk Sender</h1>
+            </div>
+            <div class="status" id="status">
+                <span class="status-indicator"></span>
+                <span class="status-text">Checking...</span>
+            </div>
+        </header>
+
+        <div class="card">
+            <h2>📱 Send Messages</h2>
+            <p class="subtitle">Send WhatsApp messages to multiple recipients instantly</p>
+
+            <form id="bulkMessageForm">
+                <div class="form-group">
+                    <label for="phoneNumbers">
+                        <span class="label-text">📞 Phone Numbers</span>
+                        <span class="label-hint">One number per line (with country code, e.g., 94775986195)</span>
+                    </label>
+
+                    <!-- Excel Upload Section -->
+                    <div class="upload-section">
+                        <input type="file" id="excelFile" accept=".xlsx,.xls" style="display: none;">
+                        <button type="button" class="btn-upload" id="uploadBtn">
+                            <span class="btn-icon">📊</span>
+                            <span class="btn-text">Upload Excel File</span>
+                        </button>
+                        <span class="upload-hint">Or enter manually below</span>
+                    </div>
+
+                    <textarea id="phoneNumbers" name="phoneNumbers" rows="8"
+                        placeholder="94775986195&#10;94750329795&#10;94712345678" required></textarea>
+                    <div class="input-footer">
+                        <span id="numberCount">0 numbers</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="message">
+                        <span class="label-text">💬 Message</span>
+                        <span class="label-hint">Type your message here</span>
+                    </label>
+                    <textarea id="message" name="message" rows="6"
+                        placeholder="Hello! This is a bulk message from WhatsApp Bulk Sender." required></textarea>
+                    <div class="input-footer">
+                        <span id="charCount">0 characters</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="sendBtn">
+                    <span class="btn-icon">📤</span>
+                    <span class="btn-text">Send Messages</span>
+                </button>
+            </form>
+        </div>
+
+        <div class="card results-card" id="resultsCard" style="display: none;">
+            <h2>📊 Results</h2>
+            <div class="stats" id="stats"></div>
+            <div class="results-list" id="resultsList"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -714,6 +714,73 @@ ${config.aiBot.systemPrompt}`;
                 required: ["booking_id"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "get_service_list",
+              description: "Get all available services with correct prices for a specific vehicle type. Always call this before showing prices to the customer. Returns services organized by brand (Standard and AutoGlym).",
+              parameters: {
+                type: "object",
+                properties: {
+                  vehicle_type: {
+                    type: "string",
+                    enum: Object.keys(config.vehicleTypes),
+                    description: "The vehicle type ID (car_minivan, crossover, suv, or van)"
+                  }
+                },
+                required: ["vehicle_type"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "get_service_price",
+              description: "Get the exact price of a single service for a specific vehicle type. Use this when user asks about a specific service price.",
+              parameters: {
+                type: "object",
+                properties: {
+                  service_id: {
+                    type: "string",
+                    enum: allServiceIds,
+                    description: "The service ID (e.g., 'wash_vacuum', 'leather_treatment_autoglym')"
+                  },
+                  vehicle_type: {
+                    type: "string",
+                    enum: Object.keys(config.vehicleTypes),
+                    description: "The vehicle type ID (car_minivan, crossover, suv, or van)"
+                  }
+                },
+                required: ["service_id", "vehicle_type"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "calculate_booking_total",
+              description: "Calculate the total price for one or more selected services for a specific vehicle type. Returns each service with its price and the total sum. ALWAYS use this tool instead of calculating prices manually.",
+              parameters: {
+                type: "object",
+                properties: {
+                  service_ids: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                      enum: allServiceIds
+                    },
+                    description: "Array of service IDs selected by the customer"
+                  },
+                  vehicle_type: {
+                    type: "string",
+                    enum: Object.keys(config.vehicleTypes),
+                    description: "The vehicle type ID (car_minivan, crossover, suv, or van)"
+                  }
+                },
+                required: ["service_ids", "vehicle_type"]
+              }
+            }
           }
         ];
 
@@ -790,6 +857,75 @@ ${config.aiBot.systemPrompt}`;
 
                 const result = await updateBooking(args.booking_id, updates);
                 toolResult = result.message;
+              } else if (fnName === 'get_service_list') {
+                const vehicleTypeObj = config.vehicleTypes[args.vehicle_type];
+                if (!vehicleTypeObj) {
+                  toolResult = JSON.stringify({ error: `Invalid vehicle type: ${args.vehicle_type}` });
+                } else {
+                  const vehicleKey = vehicleTypeObj.key;
+                  const standardServices = config.packages.Standard.map((s, i) => ({
+                    index: i + 1,
+                    id: s.id,
+                    name: s.name,
+                    price: s.prices[vehicleKey],
+                    brand: 'Standard'
+                  }));
+                  const autoglymServices = config.packages.AutoGlym.map((s, i) => ({
+                    index: i + 10,
+                    id: s.id,
+                    name: s.name,
+                    price: s.prices[vehicleKey],
+                    brand: 'AutoGlym'
+                  }));
+                  toolResult = JSON.stringify({
+                    vehicle_type: vehicleTypeObj.display,
+                    vehicle_key: vehicleKey,
+                    standard_services: standardServices,
+                    autoglym_services: autoglymServices
+                  });
+                }
+              } else if (fnName === 'get_service_price') {
+                const vehicleTypeObj = config.vehicleTypes[args.vehicle_type];
+                if (!vehicleTypeObj) {
+                  toolResult = JSON.stringify({ error: `Invalid vehicle type: ${args.vehicle_type}` });
+                } else {
+                  const service = config.getServiceById(args.service_id);
+                  if (!service) {
+                    toolResult = JSON.stringify({ error: `Service not found: ${args.service_id}` });
+                  } else {
+                    const vehicleKey = vehicleTypeObj.key;
+                    toolResult = JSON.stringify({
+                      service_id: service.id,
+                      service_name: service.name,
+                      vehicle_type: vehicleTypeObj.display,
+                      price: service.prices[vehicleKey]
+                    });
+                  }
+                }
+              } else if (fnName === 'calculate_booking_total') {
+                const vehicleTypeObj = config.vehicleTypes[args.vehicle_type];
+                if (!vehicleTypeObj) {
+                  toolResult = JSON.stringify({ error: `Invalid vehicle type: ${args.vehicle_type}` });
+                } else {
+                  const vehicleKey = vehicleTypeObj.key;
+                  const services = [];
+                  let total = 0;
+                  for (const serviceId of args.service_ids) {
+                    const service = config.getServiceById(serviceId);
+                    if (service) {
+                      const price = service.prices[vehicleKey];
+                      services.push({ id: service.id, name: service.name, price: price });
+                      total += price;
+                    } else {
+                      services.push({ id: serviceId, name: 'Unknown', price: 0, error: 'Service not found' });
+                    }
+                  }
+                  toolResult = JSON.stringify({
+                    vehicle_type: vehicleTypeObj.display,
+                    services: services,
+                    total: total
+                  });
+                }
               } else {
                 toolResult = "Unknown tool";
               }

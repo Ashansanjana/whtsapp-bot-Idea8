@@ -112,12 +112,10 @@ function notifyListeners(logEntry) {
  * Store QR code
  */
 async function setQRCode(qr) {
-  currentQR = qr;
-  currentQRImage = null;
-
-  // Generate QR code as Data URL (base64 image)
+  // Generate QR code as Data URL (base64 image) FIRST
+  let qrImage = null;
   try {
-    currentQRImage = await QRCode.toDataURL(qr, {
+    qrImage = await QRCode.toDataURL(qr, {
       width: 256,
       margin: 1,
       errorCorrectionLevel: 'H'
@@ -126,8 +124,13 @@ async function setQRCode(qr) {
     warning('Failed to generate QR image: ' + error.message);
   }
 
+  // Only store and notify after generation is complete
+  // This ensures qr and qrImage always match
+  currentQR = qr;
+  currentQRImage = qrImage;
+
   // Notify listeners (web UI) about new QR
-  notifyListeners({ type: 'qr', qr, qrImage: currentQRImage });
+  notifyListeners({ type: 'qr', qr, qrImage });
 }
 
 /**

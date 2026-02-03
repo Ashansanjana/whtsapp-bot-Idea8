@@ -98,8 +98,9 @@ function initializeClient(configuration) {
 function setupEventHandlers() {
   // QR Code generation
   client.on('qr', async (qr) => {
+    const timestamp = new Date().toISOString();
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    logger.info('📱 QR Code Generated! Scan with WhatsApp');
+    logger.info(`📱 QR Code Generated! Scan with WhatsApp [${timestamp}]`);
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Store QR for web UI (wait for image generation)
@@ -107,7 +108,7 @@ function setupEventHandlers() {
 
     // Also show in terminal
     qrcode.generate(qr, { small: true });
-    console.log('\n⏳ Waiting for QR code scan...\n');
+    console.log(`\n⏳ Waiting for QR code scan... [${timestamp}]\n`);
     reconnectAttempts = 0;
   });
 

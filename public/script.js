@@ -11,6 +11,7 @@ const statsElement = document.getElementById('stats');
 const resultsListElement = document.getElementById('resultsList');
 const qrCard = document.getElementById('qrCard');
 const qrContainer = document.getElementById('qrContainer');
+const qrTimestamp = document.getElementById('qrTimestamp');
 const logsContainer = document.getElementById('logsContainer');
 const clearLogsBtn = document.getElementById('clearLogsBtn');
 const autoScrollCheck = document.getElementById('autoScrollCheck');
@@ -380,6 +381,11 @@ function showQRCode(qrText, qrImage) {
     }
 
     qrCard.style.display = 'block';
+
+    // Show timestamp of when QR was updated
+    const now = new Date();
+    qrTimestamp.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+
     qrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 

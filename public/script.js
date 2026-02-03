@@ -334,6 +334,14 @@ function showQRCode(qrText, qrImage) {
         qrContainer.removeChild(qrContainer.firstChild);
     }
 
+    // Debug: log QR data to help diagnose mismatches
+    console.log('QR Code Update:', {
+        hasImage: !!qrImage,
+        hasText: !!qrText,
+        textPreview: qrText ? qrText.substring(0, 50) + '...' : 'none',
+        timestamp: new Date().toISOString()
+    });
+
     try {
         // Prefer pre-rendered image from backend
         if (qrImage) {

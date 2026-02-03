@@ -329,13 +329,28 @@ async function checkQRCode() {
 }
 
 function showQRCode(qrText) {
-    // Display QR code as plain text
+    // Clear previous QR code
     qrContainer.textContent = '';
-    const pre = document.createElement('pre');
-    pre.style.fontSize = '8px';
-    pre.style.lineHeight = '1';
-    pre.textContent = qrText;
-    qrContainer.appendChild(pre);
+
+    // Create QR code using QRCode.js library
+    try {
+        new QRCode(qrContainer, {
+            text: qrText,
+            width: 256,
+            height: 256,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    } catch (error) {
+        // Fallback: show error message
+        const errorMsg = document.createElement('p');
+        errorMsg.textContent = 'Error generating QR code. Please check console.';
+        errorMsg.style.color = 'red';
+        qrContainer.appendChild(errorMsg);
+        console.error('QR Code generation error:', error);
+    }
+
     qrCard.style.display = 'block';
     qrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }

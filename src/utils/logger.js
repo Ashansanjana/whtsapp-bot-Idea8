@@ -115,8 +115,6 @@ async function setQRCode(qr) {
   currentQR = qr;
   currentQRImage = null;
 
-  addLog(LEVELS.INFO, '📱 QR Code Generated - Scan with WhatsApp');
-
   // Generate QR code as Data URL (base64 image)
   try {
     currentQRImage = await QRCode.toDataURL(qr, {
@@ -128,6 +126,7 @@ async function setQRCode(qr) {
     warning('Failed to generate QR image: ' + error.message);
   }
 
+  // Notify listeners (web UI) about new QR
   notifyListeners({ type: 'qr', qr, qrImage: currentQRImage });
 }
 

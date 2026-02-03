@@ -306,14 +306,32 @@ bot: {
 
 ```
 whstspbot/
-├── index.js           # Main bot application
-├── start.js           # Starter script with pre-flight checks
-├── config.js          # Configuration file
-├── package.json       # Dependencies and scripts
-├── .gitignore         # Git ignore rules
-├── .env.example       # Environment variables template
-└── README.md          # Documentation
+├── index.js                    # Main entry point (orchestrator)
+├── index.old.js                # Backup of previous monolithic version
+├── config.js                   # Configuration management
+├── history.js                  # Chat history manager
+├── package.json                # Dependencies and scripts
+├── .gitignore                  # Git ignore rules
+├── .env                        # Environment variables (not committed)
+├── README.md                   # Documentation
+├── src/
+│   ├── services/              # Business logic services
+│   │   ├── whatsapp.js       # WhatsApp client management
+│   │   ├── openai.js         # AI bot logic & tool calling
+│   │   ├── booking.js        # Booking API integration
+│   │   └── express.js        # Web API server
+│   └── utils/                 # Utility functions
+│       └── helpers.js        # Helper functions
+├── prompts/
+│   └── system-prompt.js      # AI system prompt configuration
+├── public/                    # Web interface assets
+│   ├── index.html
+│   └── script.js
+└── docs/
+    └── ARCHITECTURE.md        # Detailed architecture documentation
 ```
+
+**Note**: The codebase has been refactored into a modular architecture for better maintainability. See `docs/ARCHITECTURE.md` for detailed information about the architecture and design patterns.
 
 ## Contributing
 

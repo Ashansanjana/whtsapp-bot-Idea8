@@ -1,17 +1,18 @@
 services:
-  whatsapp-bot:
+  washbot:
     build: .
-    container_name: whatsapp-bot
+    container_name: washbot
     restart: unless-stopped
     env_file:
       - .env
     labels:
+      - "com.project=washbot"
       - "traefik.enable=true"
-      - "traefik.http.routers.whatsapp-bot.rule=Host(`wbot.idea8.cloud`)"
-      - "traefik.http.routers.whatsapp-bot.entrypoints=websecure"
-      - "traefik.http.routers.whatsapp-bot.tls.certresolver=letsencrypt"
-      - "traefik.http.services.whatsapp-bot.loadbalancer.server.port=3000"
-      - "traefik.http.routers.whatsapp-bot.middlewares=security-headers"
+      - "traefik.http.routers.washbot.rule=Host(`washbot.idea8.cloud`)"
+      - "traefik.http.routers.washbot.entrypoints=websecure"
+      - "traefik.http.routers.washbot.tls.certresolver=letsencrypt"
+      - "traefik.http.services.washbot.loadbalancer.server.port=3000"
+      - "traefik.http.routers.washbot.middlewares=security-headers"
     volumes:
       - whatsapp-session:/app/.wwebjs_auth
       - ./google_calendar_credentials.json:/app/google_calendar_credentials.json:ro

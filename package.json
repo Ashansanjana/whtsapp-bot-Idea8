@@ -1,7 +1,7 @@
 {
-  "name": "whstspbot",
+  "name": "washbot",
   "version": "1.0.0",
-  "description": "Automatic WhatsApp sending and reply system using WhatsApp Web",
+  "description": "WashBot - Car wash booking and WhatsApp automation system",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

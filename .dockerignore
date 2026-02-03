@@ -5,6 +5,8 @@ node_modules
 *.log
 .git
 .gitignore
+.github
 README.md
+docs
 test-*.js
 session

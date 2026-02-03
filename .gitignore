@@ -12,6 +12,7 @@ session-data/
 .env
 .env.local
 .env.*.local
+.env.production
 
 # Logs
 logs/

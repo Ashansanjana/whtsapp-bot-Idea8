@@ -2,12 +2,15 @@
  * Logger utility with in-memory log storage for web UI
  */
 
+const QRCode = require('qrcode');
+
 const MAX_LOGS = 200; // Keep last 200 logs
 const logs = [];
 const listeners = new Set();
 
 // Store current QR code
 let currentQR = null;
+let currentQRImage = null;
 
 /**
  * Log levels
@@ -108,10 +111,24 @@ function notifyListeners(logEntry) {
 /**
  * Store QR code
  */
-function setQRCode(qr) {
+async function setQRCode(qr) {
   currentQR = qr;
+  currentQRImage = null;
+
   addLog(LEVELS.INFO, '📱 QR Code Generated - Scan with WhatsApp');
-  notifyListeners({ type: 'qr', qr });
+
+  // Generate QR code as Data URL (base64 image)
+  try {
+    currentQRImage = await QRCode.toDataURL(qr, {
+      width: 256,
+      margin: 1,
+      errorCorrectionLevel: 'H'
+    });
+  } catch (error) {
+    warning('Failed to generate QR image: ' + error.message);
+  }
+
+  notifyListeners({ type: 'qr', qr, qrImage: currentQRImage });
 }
 
 /**
@@ -119,14 +136,18 @@ function setQRCode(qr) {
  */
 function clearQRCode() {
   currentQR = null;
-  notifyListeners({ type: 'qr', qr: null });
+  currentQRImage = null;
+  notifyListeners({ type: 'qr', qr: null, qrImage: null });
 }
 
 /**
  * Get current QR code
  */
 function getQRCode() {
-  return currentQR;
+  return {
+    qr: currentQR,
+    qrImage: currentQRImage
+  };
 }
 
 module.exports = {

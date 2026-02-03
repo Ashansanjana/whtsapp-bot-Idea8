@@ -295,8 +295,8 @@ function connectLogStream() {
             clearLogs();
         } else if (data.type === 'qr') {
             // Handle QR code
-            if (data.qr) {
-                showQRCode(data.qr);
+            if (data.qr || data.qrImage) {
+                showQRCode(data.qr, data.qrImage);
             } else {
                 hideQRCode();
             }
@@ -318,8 +318,8 @@ async function checkQRCode() {
         const response = await fetch(`${API_BASE}/api/qr`);
         const data = await response.json();
 
-        if (data.success && data.qr) {
-            showQRCode(data.qr);
+        if (data.success && (data.qr || data.qrImage)) {
+            showQRCode(data.qr, data.qrImage);
         } else {
             hideQRCode();
         }
@@ -328,29 +328,47 @@ async function checkQRCode() {
     }
 }
 
-function showQRCode(qrText) {
+function showQRCode(qrText, qrImage) {
     // Clear previous QR code completely (remove all child elements)
     while (qrContainer.firstChild) {
         qrContainer.removeChild(qrContainer.firstChild);
     }
 
-    // Create QR code using QRCode.js library
     try {
-        new QRCode(qrContainer, {
-            text: qrText,
-            width: 256,
-            height: 256,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
-        });
+        // Prefer pre-rendered image from backend
+        if (qrImage) {
+            const img = document.createElement('img');
+            img.src = qrImage;
+            img.alt = 'QR Code';
+            img.style.width = '256px';
+            img.style.height = '256px';
+            qrContainer.appendChild(img);
+        }
+        // Fallback to client-side generation if QRCode.js is available
+        else if (qrText && typeof QRCode !== 'undefined') {
+            new QRCode(qrContainer, {
+                text: qrText,
+                width: 256,
+                height: 256,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+        // Last resort: show message
+        else {
+            const errorMsg = document.createElement('p');
+            errorMsg.textContent = 'QR code available but cannot be displayed';
+            errorMsg.style.color = '#737373';
+            qrContainer.appendChild(errorMsg);
+        }
     } catch (error) {
-        // Fallback: show error message
+        // Error handling
         const errorMsg = document.createElement('p');
-        errorMsg.textContent = 'Error generating QR code. Please check console.';
+        errorMsg.textContent = 'Error displaying QR code. Please check console.';
         errorMsg.style.color = 'red';
         qrContainer.appendChild(errorMsg);
-        console.error('QR Code generation error:', error);
+        console.error('QR Code display error:', error);
     }
 
     qrCard.style.display = 'block';

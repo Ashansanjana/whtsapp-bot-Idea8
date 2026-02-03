@@ -76,11 +76,12 @@ function setupRoutes() {
 
   // Get QR code endpoint
   app.get('/api/qr', (req, res) => {
-    const qr = logger.getQRCode();
-    if (qr) {
+    const qrData = logger.getQRCode();
+    if (qrData.qr || qrData.qrImage) {
       res.json({
         success: true,
-        qr: qr
+        qr: qrData.qr,
+        qrImage: qrData.qrImage
       });
     } else {
       res.json({

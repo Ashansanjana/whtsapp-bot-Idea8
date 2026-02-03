@@ -97,13 +97,13 @@ function initializeClient(configuration) {
  */
 function setupEventHandlers() {
   // QR Code generation
-  client.on('qr', (qr) => {
+  client.on('qr', async (qr) => {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logger.info('📱 QR Code Generated! Scan with WhatsApp');
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // Store QR for web UI
-    logger.setQRCode(qr);
+    // Store QR for web UI (wait for image generation)
+    await logger.setQRCode(qr);
 
     // Also show in terminal
     qrcode.generate(qr, { small: true });

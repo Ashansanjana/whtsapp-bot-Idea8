@@ -329,8 +329,10 @@ async function checkQRCode() {
 }
 
 function showQRCode(qrText) {
-    // Clear previous QR code
-    qrContainer.textContent = '';
+    // Clear previous QR code completely (remove all child elements)
+    while (qrContainer.firstChild) {
+        qrContainer.removeChild(qrContainer.firstChild);
+    }
 
     // Create QR code using QRCode.js library
     try {

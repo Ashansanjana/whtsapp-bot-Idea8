@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const openaiService = require('./openai');
+const logger = require('../utils/logger');
 
 // Session management
 const SESSION_PATH = path.join(__dirname, '../../.wwebjs_auth');
@@ -97,9 +98,14 @@ function initializeClient(configuration) {
 function setupEventHandlers() {
   // QR Code generation
   client.on('qr', (qr) => {
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📱 QR Code Generated! Scan with WhatsApp:');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('📱 QR Code Generated! Scan with WhatsApp');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // Store QR for web UI
+    logger.setQRCode(qr);
+
+    // Also show in terminal
     qrcode.generate(qr, { small: true });
     console.log('\n⏳ Waiting for QR code scan...\n');
     reconnectAttempts = 0;
@@ -107,9 +113,10 @@ function setupEventHandlers() {
 
   // Authentication success
   client.on('authenticated', () => {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔐 Authentication successful!');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.success('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.success('🔐 Authentication successful!');
+    logger.success('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.clearQRCode(); // Clear QR after successful auth
     reconnectAttempts = 0;
   });
 
@@ -126,11 +133,11 @@ function setupEventHandlers() {
     isClientReady = true;
     reconnectAttempts = 0;
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ WhatsApp Bot is ready!');
-    console.log('👤 Connected as:', client.info.pushname);
-    console.log('📱 Phone:', client.info.wid.user);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.success('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.success('✅ WhatsApp Bot is ready!');
+    logger.success(`👤 Connected as: ${client.info.pushname}`);
+    logger.success(`📱 Phone: ${client.info.wid.user}`);
+    logger.success('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Apply safety patch for sendSeen error
     try {
@@ -155,10 +162,10 @@ function setupEventHandlers() {
     }
 
     if (config.autoReply.enabled) {
-      console.log('✉️  Auto-reply is enabled');
+      logger.info('✉️  Auto-reply is enabled');
     }
 
-    console.log('\n📡 Bot is now listening for messages...\n');
+    logger.info('📡 Bot is now listening for messages...');
   });
 
   // Disconnected handler
@@ -220,7 +227,7 @@ async function handleMessage(message) {
     };
 
     if (config.bot.logMessages) {
-      console.log(`📨 Message from ${customerInfo.name} (${message.from}): ${message.body}`);
+      logger.info(`📨 Message from ${customerInfo.name} (${message.from}): ${message.body}`);
     }
 
     if (!config.autoReply.enabled) return;

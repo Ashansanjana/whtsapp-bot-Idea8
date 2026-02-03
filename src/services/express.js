@@ -6,6 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const xlsx = require('xlsx');
+const logger = require('../utils/logger');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -61,6 +62,55 @@ function setupRoutes() {
     res.json({
       ready: status.ready,
       info: status.info
+    });
+  });
+
+  // Get logs endpoint
+  app.get('/api/logs', (req, res) => {
+    const limit = parseInt(req.query.limit) || 100;
+    res.json({
+      success: true,
+      logs: logger.getLogs(limit)
+    });
+  });
+
+  // Get QR code endpoint
+  app.get('/api/qr', (req, res) => {
+    const qr = logger.getQRCode();
+    if (qr) {
+      res.json({
+        success: true,
+        qr: qr
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'No QR code available'
+      });
+    }
+  });
+
+  // Server-Sent Events for real-time logs
+  app.get('/api/logs/stream', (req, res) => {
+    // Set headers for SSE
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+
+    // Send initial logs
+    const initialLogs = logger.getLogs(50);
+    res.write(`data: ${JSON.stringify({ type: 'initial', logs: initialLogs })}\n\n`);
+
+    // Listen for new logs
+    const removeListener = logger.addListener((logEntry) => {
+      res.write(`data: ${JSON.stringify(logEntry)}\n\n`);
+    });
+
+    // Clean up on close
+    req.on('close', () => {
+      removeListener();
     });
   });
 

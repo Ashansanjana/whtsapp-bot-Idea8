@@ -9,9 +9,17 @@ const charCountElement = document.getElementById('charCount');
 const resultsCard = document.getElementById('resultsCard');
 const statsElement = document.getElementById('stats');
 const resultsListElement = document.getElementById('resultsList');
+const qrCard = document.getElementById('qrCard');
+const qrContainer = document.getElementById('qrContainer');
+const logsContainer = document.getElementById('logsContainer');
+const clearLogsBtn = document.getElementById('clearLogsBtn');
+const autoScrollCheck = document.getElementById('autoScrollCheck');
 
 // API Base URL
 const API_BASE = window.location.origin;
+
+// SSE for logs
+let logsEventSource = null;
 
 // Check WhatsApp status on load
 async function checkStatus() {
@@ -221,8 +229,129 @@ function displayResults(data) {
     }).join('');
 }
 
+// Log Management
+function addLogToUI(logEntry) {
+    const logElement = document.createElement('div');
+    logElement.className = `log-entry ${logEntry.level || 'info'}`;
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = new Date(logEntry.timestamp).toLocaleTimeString();
+
+    const messageSpan = document.createElement('span');
+    messageSpan.className = 'log-message';
+    messageSpan.textContent = logEntry.message;
+
+    logElement.appendChild(timeSpan);
+    logElement.appendChild(messageSpan);
+
+    logsContainer.appendChild(logElement);
+
+    // Auto-scroll if enabled
+    if (autoScrollCheck.checked) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+
+    // Keep max 200 logs in DOM
+    while (logsContainer.children.length > 200) {
+        logsContainer.removeChild(logsContainer.firstChild);
+    }
+}
+
+function clearLogs() {
+    logsContainer.textContent = '';
+    const logElement = document.createElement('div');
+    logElement.className = 'log-entry info';
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = new Date().toLocaleTimeString();
+
+    const messageSpan = document.createElement('span');
+    messageSpan.className = 'log-message';
+    messageSpan.textContent = 'Logs cleared';
+
+    logElement.appendChild(timeSpan);
+    logElement.appendChild(messageSpan);
+    logsContainer.appendChild(logElement);
+}
+
+// Connect to log stream
+function connectLogStream() {
+    if (logsEventSource) {
+        logsEventSource.close();
+    }
+
+    logsEventSource = new EventSource(`${API_BASE}/api/logs/stream`);
+
+    logsEventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'initial') {
+            // Clear and load initial logs
+            logsContainer.textContent = '';
+            data.logs.forEach(log => addLogToUI(log));
+        } else if (data.type === 'clear') {
+            clearLogs();
+        } else if (data.type === 'qr') {
+            // Handle QR code
+            if (data.qr) {
+                showQRCode(data.qr);
+            } else {
+                hideQRCode();
+            }
+        } else {
+            // New log entry
+            addLogToUI(data);
+        }
+    };
+
+    logsEventSource.onerror = () => {
+        console.error('Log stream connection error, retrying...');
+        setTimeout(connectLogStream, 5000);
+    };
+}
+
+// QR Code Management
+async function checkQRCode() {
+    try {
+        const response = await fetch(`${API_BASE}/api/qr`);
+        const data = await response.json();
+
+        if (data.success && data.qr) {
+            showQRCode(data.qr);
+        } else {
+            hideQRCode();
+        }
+    } catch (error) {
+        console.error('Error checking QR code:', error);
+    }
+}
+
+function showQRCode(qrText) {
+    // Display QR code as plain text
+    qrContainer.textContent = '';
+    const pre = document.createElement('pre');
+    pre.style.fontSize = '8px';
+    pre.style.lineHeight = '1';
+    pre.textContent = qrText;
+    qrContainer.appendChild(pre);
+    qrCard.style.display = 'block';
+    qrCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideQRCode() {
+    qrCard.style.display = 'none';
+}
+
+// Clear logs button
+clearLogsBtn.addEventListener('click', clearLogs);
+
 // Initialize
 checkStatus();
+connectLogStream();
+checkQRCode();
 
-// Refresh status every 30 seconds
+// Refresh status and QR every 30 seconds
 setInterval(checkStatus, 30000);
+setInterval(checkQRCode, 10000);

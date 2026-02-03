@@ -85,6 +85,35 @@
             <div class="stats" id="stats"></div>
             <div class="results-list" id="resultsList"></div>
         </div>
+
+        <!-- QR Code Section -->
+        <div class="card qr-card" id="qrCard" style="display: none;">
+            <h2>📱 WhatsApp QR Code</h2>
+            <p class="subtitle">Scan this QR code with WhatsApp to connect</p>
+            <div class="qr-container" id="qrContainer"></div>
+        </div>
+
+        <!-- Logs Section -->
+        <div class="card logs-card">
+            <div class="logs-header">
+                <h2>📋 System Logs</h2>
+                <button type="button" class="btn-clear-logs" id="clearLogsBtn">
+                    <span>🗑️ Clear</span>
+                </button>
+            </div>
+            <div class="logs-controls">
+                <label class="auto-scroll-label">
+                    <input type="checkbox" id="autoScrollCheck" checked>
+                    <span>Auto-scroll</span>
+                </label>
+            </div>
+            <div class="logs-container" id="logsContainer">
+                <div class="log-entry info">
+                    <span class="log-time">Loading...</span>
+                    <span class="log-message">Connecting to server...</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>

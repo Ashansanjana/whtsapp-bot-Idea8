@@ -105,9 +105,24 @@ async function sendBookingWebhook(bookingData, customerInfo, conversationHistory
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ Webhook Error:', response.status, errorText);
+
+      // Handle booking conflict (time slot already taken)
+      if (response.status === 400 || response.status === 409) {
+        console.warn('⚠️ Booking conflict detected - time slot may be unavailable');
+        return {
+          success: false,
+          status: response.status,
+          isConflict: true,
+          message: `⚠️ Sorry, this time slot is not available. The date and time you selected may already be booked.\n\nPlease choose a different date or time, and I'll check availability again.`
+        };
+      }
+
+      // Handle other errors
       return {
         success: false,
-        message: `Error: Webhook returned ${response.status}. ${errorText}`
+        status: response.status,
+        isConflict: false,
+        message: `Error: Unable to complete booking. ${errorText || 'Please try again later.'}`
       };
     }
 

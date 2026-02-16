@@ -9,6 +9,7 @@ const config = require('./config');
 const HistoryManager = require('./history');
 const whatsappService = require('./src/services/whatsapp');
 const openaiService = require('./src/services/openai');
+const voiceService = require('./src/services/voice');
 const expressService = require('./src/services/express');
 
 console.log(`🤖 Starting WhatsApp Bot (PID: ${process.pid})...`);
@@ -22,6 +23,13 @@ if (config.aiBot.memory && config.aiBot.memory.enabled) {
 // Initialize OpenAI service
 if (config.aiBot && config.aiBot.enabled) {
   openaiService.initialize(process.env.OPENAI_API_KEY, historyManager);
+
+  // Initialize voice service with OpenAI client (for Whisper API)
+  if (config.voiceTranscription && config.voiceTranscription.enabled) {
+    const openaiClient = openaiService.getClient();
+    voiceService.initialize(openaiClient);
+    console.log('🎤 Voice transcription enabled (Whisper API)');
+  }
 }
 
 // Initialize WhatsApp client

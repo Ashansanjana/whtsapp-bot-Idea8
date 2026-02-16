@@ -470,7 +470,15 @@ ${config.aiBot.systemPrompt}`;
   }
 }
 
+/**
+ * Get OpenAI client instance
+ */
+function getClient() {
+  return openai;
+}
+
 module.exports = {
   initialize,
-  processMessage
+  processMessage,
+  getClient
 };

@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const openaiService = require('./openai');
+const voiceService = require('./voice');
 const logger = require('../utils/logger');
 
 // Session management
@@ -255,6 +256,28 @@ async function handleMessage(message) {
       }
 
       console.log('🔔 Bot mentioned or replied to in group. Processing...');
+    }
+
+    // Check if this is a voice message and transcription is enabled
+    if (config.voiceTranscription && config.voiceTranscription.enabled && voiceService.isVoiceMessage(message)) {
+      console.log('🎤 Voice message detected, transcribing...');
+
+      const transcriptionResult = await voiceService.transcribeVoiceMessage(message, config);
+
+      if (transcriptionResult.success) {
+        // Replace message body with transcribed text
+        message.body = transcriptionResult.text;
+        console.log(`✅ Voice transcribed: "${message.body}"`);
+      } else {
+        console.error('❌ Voice transcription failed:', transcriptionResult.error);
+        // Send error message to user
+        try {
+          await chat.sendMessage('Sorry, I couldn\'t transcribe your voice message. Please try again or send a text message.');
+        } catch (err) {
+          console.error('❌ Error sending transcription error message:', err.message);
+        }
+        return; // Don't process further if transcription failed
+      }
     }
 
     const messageBody = message.body.toLowerCase();

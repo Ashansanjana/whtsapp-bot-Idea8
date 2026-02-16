@@ -397,6 +397,14 @@ module.exports = {
 		logMessages: true,
 	},
 
+	// Voice Transcription Settings (OpenAI Whisper)
+	voiceTranscription: {
+		enabled: true, // Enable/disable voice message transcription
+		model: 'whisper-1', // Whisper model to use
+		language: undefined, // Language code (e.g., 'en', 'si') or undefined for auto-detect
+		tempDir: './temp_audio' // Temporary directory for audio files
+	},
+
 	// WhatsApp client settings
 	client: {
 		puppeteerArgs: [
@@ -407,8 +415,8 @@ module.exports = {
 			"--no-first-run",
 			"--no-zygote",
 			"--disable-gpu",
-      '--single-process',
-      '--disable-crashpad'
+			'--single-process',
+			'--disable-crashpad'
 		],
 		sessionPath: "./.wwebjs_auth",
 		// Chrome/Chromium executable path (auto-detected from env in Docker)

@@ -34,7 +34,8 @@ function initializeServer(whatsappSvc, config) {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`📡 Server: http://localhost:${API_PORT}`);
     console.log(`📋 Web UI: http://localhost:${API_PORT}`);
-    console.log(`🔌 API: http://localhost:${API_PORT}/api/send-bulk`);
+    console.log(`🔌 Bulk API: http://localhost:${API_PORT}/api/send-bulk`);
+    console.log(`📨 Send API: http://localhost:${API_PORT}/api/send-message`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   });
 
@@ -113,6 +114,120 @@ function setupRoutes() {
     req.on('close', () => {
       removeListener();
     });
+  });
+
+  // Send single message endpoint (webhook for external systems)
+  app.post('/api/send-message', async (req, res) => {
+    try {
+      // API Key authentication (optional)
+      const apiKey = process.env.SEND_MESSAGE_API_KEY;
+      if (apiKey) {
+        const providedKey = req.headers['x-api-key'];
+        if (!providedKey) {
+          return res.status(401).json({
+            success: false,
+            error: 'API key required. Please provide x-api-key header.'
+          });
+        }
+        if (providedKey !== apiKey) {
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid API key'
+          });
+        }
+      }
+
+      // Validate request body
+      const { phone, message } = req.body;
+
+      if (!phone || phone.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: 'Phone number is required'
+        });
+      }
+
+      if (!message || message.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: 'Message is required'
+        });
+      }
+
+      // Check WhatsApp client status
+      const status = whatsappService.getStatus();
+      if (!status.ready) {
+        return res.status(503).json({
+          success: false,
+          error: 'WhatsApp client is not ready. Please wait and try again.'
+        });
+      }
+
+      // Clean and format phone number
+      let cleanNumber = phone.replace(/\D/g, ''); // Remove all non-digits
+
+      // Add country code if missing (assuming Sri Lanka +94)
+      if (cleanNumber.startsWith('0')) {
+        cleanNumber = '94' + cleanNumber.substring(1);
+      } else if (!cleanNumber.startsWith('94')) {
+        cleanNumber = '94' + cleanNumber;
+      }
+
+      // Validate phone number length
+      if (cleanNumber.length < 11 || cleanNumber.length > 15) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid phone number format'
+        });
+      }
+
+      const chatId = `${cleanNumber}@c.us`;
+
+      console.log(`📨 Send message request: ${cleanNumber}`);
+
+      // Send message
+      const client = whatsappService.getClient();
+
+      // Validate number first (fixes "No LID for user" error)
+      let targetId = chatId;
+      try {
+        const numberDetails = await client.getNumberId(chatId);
+        if (numberDetails) {
+          targetId = numberDetails._serialized;
+          console.log(`✅ Number validated: ${cleanNumber} -> ${targetId}`);
+        } else {
+          console.warn(`⚠️ Number ${cleanNumber} not found on WhatsApp, attempting to send anyway...`);
+        }
+      } catch (validationError) {
+        console.warn(`⚠️ Failed to validate number ${cleanNumber}:`, validationError.message);
+        // Continue with original chatId if validation fails (fallback)
+      }
+
+      // Check for self-messaging
+      if (client.info && client.info.wid && targetId.includes(client.info.wid.user)) {
+        console.warn(`⚠️ NOTE: You are sending a message to the bot's own number.`);
+        console.warn(`   WhatsApp Web often does NOT show notifications for self-messages.`);
+        console.warn(`   Check the chat with yourself ("You") in WhatsApp.`);
+      }
+
+      await client.sendMessage(targetId, message);
+
+      console.log(`✅ Message sent to ${cleanNumber}`);
+
+      res.json({
+        success: true,
+        message: 'Message sent successfully',
+        recipient: `${cleanNumber}`,
+        chatId: targetId
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to send to ${cleanNumber}:`, error.message);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to send message'
+      });
+    }
   });
 
   // Excel upload endpoint

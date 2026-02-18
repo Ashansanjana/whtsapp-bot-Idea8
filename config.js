@@ -379,7 +379,7 @@ module.exports = {
 		// Chat Memory Settings
 		memory: {
 			enabled: true,
-			limit: 15, // Increased for complex booking conversations
+			limit: 30, // Increased for better context retention in complex booking conversations
 		},
 	},
 

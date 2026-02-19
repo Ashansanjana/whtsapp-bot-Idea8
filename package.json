@@ -1,7 +1,7 @@
 {
-  "name": "washbot",
+  "name": "pizzabot",
   "version": "1.0.0",
-  "description": "WashBot - Car wash booking and WhatsApp automation system",
+  "description": "PizzaBot - Pizza Hut Sri Lanka WhatsApp ordering assistant",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

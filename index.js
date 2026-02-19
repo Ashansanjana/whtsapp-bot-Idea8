@@ -1,6 +1,5 @@
 /**
- * WhatsApp Bot - Main Entry Point
- * Refactored for better modularity and maintainability
+ * PizzaBot — Main Entry Point
  */
 
 require('dotenv').config(); // Load environment variables FIRST
@@ -12,12 +11,16 @@ const openaiService = require('./src/services/openai');
 const voiceService = require('./src/services/voice');
 const expressService = require('./src/services/express');
 
-console.log(`🤖 Starting WhatsApp Bot (PID: ${process.pid})...`);
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('🍕 PizzaBot — Pizza Hut Sri Lanka WhatsApp Assistant');
+console.log(`   PID: ${process.pid}`);
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-// Initialize Chat History Manager
+// Initialize Chat History Manager (with session timeout + smart trimming)
 let historyManager;
 if (config.aiBot.memory && config.aiBot.memory.enabled) {
   historyManager = new HistoryManager(config.aiBot.memory.limit);
+  console.log(`💬 Session manager ready (limit: ${config.aiBot.memory.limit} msgs, timeout: 30 min)`);
 }
 
 // Initialize OpenAI service
@@ -36,10 +39,15 @@ if (config.aiBot && config.aiBot.enabled) {
 console.log('⏳ Initializing WhatsApp client...\n');
 const client = whatsappService.initializeClient(config);
 
-// Setup graceful shutdown handlers
-whatsappService.setupShutdownHandlers();
+// Setup graceful shutdown — also cleans up session manager timer
+whatsappService.setupShutdownHandlers(() => {
+  if (historyManager) {
+    historyManager.destroy();
+    console.log('💬 Session manager stopped');
+  }
+});
 
-// Initialize WhatsApp client
+// Start WhatsApp client
 client.initialize().catch(error => {
   console.error('❌ Failed to initialize client:', error);
   process.exit(1);

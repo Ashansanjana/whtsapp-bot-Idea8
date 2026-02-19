@@ -78,7 +78,7 @@ function initializeClient(configuration) {
 
   client = new Client({
     authStrategy: new LocalAuth({
-      clientId: 'washbot-session',
+      clientId: 'pizzabot-session',
       dataPath: SESSION_PATH
     }),
     webVersionCache: {
@@ -384,12 +384,17 @@ function startAutoSend() {
 /**
  * Graceful shutdown
  */
-function setupShutdownHandlers() {
+function setupShutdownHandlers(onShutdown) {
   const shutdown = async (signal) => {
     console.log(`\n\n🛑 Received ${signal}, shutting down gracefully...`);
 
     scheduledMessages.forEach(interval => clearInterval(interval));
     scheduledMessages.clear();
+
+    // Call optional cleanup callback (e.g. historyManager.destroy())
+    if (typeof onShutdown === 'function') {
+      try { onShutdown(); } catch (e) { /* ignore */ }
+    }
 
     try {
       await client.destroy();

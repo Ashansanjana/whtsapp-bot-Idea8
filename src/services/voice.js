@@ -1,41 +1,23 @@
 /**
- * Voice Service - Handles voice message transcription using OpenAI Whisper
+ * Voice Service - Handles voice message transcription using Gemini
  */
 
-const fs = require('fs');
-const path = require('path');
-
-let openaiClient;
+let aiClient;
 
 /**
- * Initialize voice service with OpenAI client
+ * Initialize voice service with Gemini client
  */
-function initialize(openai) {
-    openaiClient = openai;
+function initialize(ai) {
+    aiClient = ai;
 }
 
 /**
- * Ensure temp directory exists
- */
-function ensureTempDir(tempDir) {
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-        console.log('📁 Created temp audio directory');
-    }
-}
-
-/**
- * Transcribe voice message to text using OpenAI Whisper
+ * Transcribe voice message to text using Gemini
  */
 async function transcribeVoiceMessage(message, config) {
-    if (!openaiClient) {
-        throw new Error('Voice service not initialized. OpenAI client is required.');
+    if (!aiClient) {
+        throw new Error('Voice service not initialized. Gemini client is required.');
     }
-
-    const tempDir = config.voiceTranscription?.tempDir || './temp_audio';
-    ensureTempDir(tempDir);
-
-    let tempFilePath = null;
 
     try {
         // Download the audio
@@ -46,29 +28,34 @@ async function transcribeVoiceMessage(message, config) {
             throw new Error('Failed to download voice message');
         }
 
-        // Determine file extension based on mimetype
-        const extension = getAudioExtension(media.mimetype);
-        const timestamp = Date.now();
-        tempFilePath = path.join(tempDir, `voice_${timestamp}.${extension}`);
+        console.log('🔄 Transcribing audio with Gemini...');
 
-        // Save to temporary file
-        const buffer = Buffer.from(media.data, 'base64');
-        fs.writeFileSync(tempFilePath, buffer);
-        console.log(`💾 Saved audio to: ${tempFilePath}`);
-
-        // Transcribe using OpenAI Whisper
-        console.log('🔄 Transcribing audio...');
-        const transcription = await openaiClient.audio.transcriptions.create({
-            file: fs.createReadStream(tempFilePath),
-            model: config.voiceTranscription?.model || 'whisper-1',
-            language: config.voiceTranscription?.language || undefined, // auto-detect if not specified
+        // Gemini supports inlineData with base64 encoded media
+        const response = await aiClient.models.generateContent({
+            model: config.voiceTranscription?.model || 'gemini-2.5-flash',
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        {
+                            inlineData: {
+                                data: media.data,
+                                mimeType: media.mimetype
+                            }
+                        },
+                        { text: 'Please transcribe the speech in this audio exactly as it is without adding commentary.' }
+                    ]
+                }
+            ]
         });
 
-        console.log(`✅ Transcription: "${transcription.text}"`);
+        const transcription = response.text || '';
+
+        console.log(`✅ Transcription: "${transcription}"`);
 
         return {
             success: true,
-            text: transcription.text,
+            text: transcription,
             duration: media.filesize || 0
         };
 
@@ -78,17 +65,14 @@ async function transcribeVoiceMessage(message, config) {
             success: false,
             error: error.message
         };
-    } finally {
-        // Clean up temporary file
-        if (tempFilePath && fs.existsSync(tempFilePath)) {
-            try {
-                fs.unlinkSync(tempFilePath);
-                console.log('🗑️ Cleaned up temp audio file');
-            } catch (cleanupError) {
-                console.error('⚠️ Failed to cleanup temp file:', cleanupError.message);
-            }
-        }
     }
+}
+
+/**
+ * Check if message is a voice/audio message
+ */
+function isVoiceMessage(message) {
+    return message.hasMedia && (message.type === 'ptt' || message.type === 'audio');
 }
 
 /**

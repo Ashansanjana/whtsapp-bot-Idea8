@@ -1,28 +1,26 @@
 /**
- * OpenAI Service - Handles AI bot logic and conversation management for PizzaBot
+ * Gemini Service - Handles AI bot logic and conversation management for the Bot
  */
 
-const OpenAI = require('openai');
+const { GoogleGenAI } = require('@google/genai');
 
-let openai;
+let ai;
 let historyManager;
 
 /**
- * Initialize OpenAI client and history manager
+ * Initialize Gemini client and history manager
  */
 function initialize(apiKey, historyMgr) {
-  openai = new OpenAI({ apiKey });
+  ai = new GoogleGenAI({ apiKey });
   historyManager = historyMgr;
 }
 
 /**
- * Process AI bot message (no tool calls — pure conversational AI)
+ * Process AI bot message 
  */
 async function processMessage(message, customerInfo, config) {
   try {
-    console.log('🤖 AI processing message... (OpenAI)');
-
-    let messages = [];
+    console.log('🤖 AI processing message... (Gemini)');
 
     // Build system prompt with current date/time
     const now = new Date();
@@ -65,61 +63,56 @@ ${conversationStatus}
 
 ${config.aiBot.systemPrompt}`;
 
-    messages.push({ role: "system", content: systemPromptWithDate });
+    const systemInstruction = systemPromptWithDate;
 
+    // Convert OpenAI history format to Gemini format
+    const contents = [];
+    
     // Add conversation history
-    if (historyManager) {
-      messages = messages.concat(conversationHistory);
+    for (const msg of conversationHistory) {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        contents.push({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: msg.content }]
+        });
+      }
     }
 
     // Add current user message
-    const userMessage = { role: "user", content: message.body };
-    messages.push(userMessage);
+    contents.push({
+      role: 'user',
+      parts: [{ text: message.body }]
+    });
 
-    // Call OpenAI (no tools — pure conversational)
+    // Call Gemini API
     let response;
     try {
-      response = await openai.chat.completions.create({
+      response = await ai.models.generateContent({
         model: config.aiBot.model,
-        messages: messages,
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+        }
       });
     } catch (err) {
-      console.error('❌ OpenAI API Error:', err.message);
-      throw new Error(`OpenAI API failed: ${err.message}`);
+      console.error('❌ Gemini API Error:', err.message);
+      throw new Error(`Gemini API failed: ${err.message}`);
     }
 
-    if (!response || !response.choices || !Array.isArray(response.choices) || response.choices.length === 0) {
-      console.error('❌ Invalid OpenAI response structure:', JSON.stringify(response));
-      throw new Error('Invalid or empty response from OpenAI API');
+    if (!response || !response.text) {
+      console.error('❌ Invalid Gemini response structure:', JSON.stringify(response));
+      throw new Error('Invalid or empty response from Gemini API');
     }
 
-    const responseMessage = response.choices[0].message;
+    const aiReply = response.text;
 
-    if (!responseMessage) {
-      console.error('❌ No message in OpenAI response');
-      throw new Error('No message object in OpenAI response');
-    }
-
-    const aiReply = responseMessage.content;
-
-    if (aiReply) {
-      messages.push({ role: "assistant", content: aiReply });
-    }
-
-    // Update history
+    // Update history using the original 'assistant' and 'user' string formats that 
+    // the historyManager might be expecting from OpenAI days, or we can just stick 
+    // to them to maintain compatibility with other parts of the codebase if any.
     if (historyManager) {
-      const historyLen = historyManager.getMessages(message.from).length;
-      const newContent = messages.slice(1 + historyLen);
-
-      for (const msg of newContent) {
-        if (msg.role === 'user' || (msg.role === 'assistant' && msg.content)) {
-          const cleanMsg = {
-            role: msg.role,
-            content: msg.content
-          };
-          historyManager.addMessage(message.from, cleanMsg);
-        }
-      }
+      // Add the user message and assistant reply to history
+      historyManager.addMessage(message.from, { role: 'user', content: message.body });
+      historyManager.addMessage(message.from, { role: 'assistant', content: aiReply });
     }
 
     return {
@@ -137,10 +130,10 @@ ${config.aiBot.systemPrompt}`;
 }
 
 /**
- * Get OpenAI client instance
+ * Get Gemini client instance
  */
 function getClient() {
-  return openai;
+  return ai;
 }
 
 module.exports = {

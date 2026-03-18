@@ -1,5 +1,5 @@
 /**
- * PizzaBot — Main Entry Point
+ * BuildStart AI — Main Entry Point
  */
 
 require('dotenv').config(); // Load environment variables FIRST
@@ -7,12 +7,12 @@ require('dotenv').config(); // Load environment variables FIRST
 const config = require('./config');
 const HistoryManager = require('./history');
 const whatsappService = require('./src/services/whatsapp');
-const openaiService = require('./src/services/openai');
+const geminiService = require('./src/services/gemini');
 const voiceService = require('./src/services/voice');
 const expressService = require('./src/services/express');
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('🍕 PizzaBot — Pizza Hut Sri Lanka WhatsApp Assistant');
+console.log('🤖 BuildStart AI — Idea8 WhatsApp Assistant');
 console.log(`   PID: ${process.pid}`);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
@@ -23,15 +23,15 @@ if (config.aiBot.memory && config.aiBot.memory.enabled) {
   console.log(`💬 Session manager ready (limit: ${config.aiBot.memory.limit} msgs, timeout: 30 min)`);
 }
 
-// Initialize OpenAI service
+// Initialize Gemini service
 if (config.aiBot && config.aiBot.enabled) {
-  openaiService.initialize(process.env.OPENAI_API_KEY, historyManager);
+  geminiService.initialize(process.env.GEMINI_API_KEY, historyManager);
 
-  // Initialize voice service with OpenAI client (for Whisper API)
+  // Initialize voice service with Gemini client
   if (config.voiceTranscription && config.voiceTranscription.enabled) {
-    const openaiClient = openaiService.getClient();
-    voiceService.initialize(openaiClient);
-    console.log('🎤 Voice transcription enabled (Whisper API)');
+    const aiClient = geminiService.getClient();
+    voiceService.initialize(aiClient);
+    console.log('🎤 Voice transcription enabled (Gemini)');
   }
 }
 

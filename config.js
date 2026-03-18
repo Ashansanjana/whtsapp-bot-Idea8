@@ -1,20 +1,19 @@
-﻿// Configuration file for PizzaBot - Pizza Hut Sri Lanka WhatsApp Ordering Bot
-
+// Configuration file for BuildStart AI - WhatsApp Business Assistant
 const getSystemPrompt = require("./prompts/system-prompt");
 
 module.exports = {
-	// Pizza Hut Business Settings
+	// Business Settings
 	businessInfo: {
-		name: "Pizza Hut Sri Lanka",
-		operatingHours: "10:00 AM - 11:00 PM",
+		name: "Ayubowan.dev",
+		operatingHours: "24/7",
 		operatingDays: "Daily",
 		timezone: "Asia/Colombo",
 	},
 
-	// AI Agent settings (OpenAI)
+	// AI Agent settings (Gemini)
 	aiBot: {
 		enabled: true,
-		model: "gpt-4o",
+		model: "gemini-2.5-flash",
 
 		systemPrompt: getSystemPrompt(),
 
@@ -38,7 +37,7 @@ module.exports = {
 		enabled: true,
 		keywords: {},
 		defaultReply:
-			"Welcome to Pizza Hut Sri Lanka! 🍕 I'm PizzaBot, your AI ordering assistant. Type anything to get started!",
+			"ආයුබෝවන් 🙏 මම Ayubowan.dev. ඔබේ business එකට WhatsApp එක හරහා 24/7 customer inquiries handle කරගන්න මම මෙතන ඉන්නවා. Type anything to start! 😊",
 		useDefaultReply: true,
 	},
 
@@ -50,10 +49,10 @@ module.exports = {
 		logMessages: true,
 	},
 
-	// Voice Transcription Settings (OpenAI Whisper)
+	// Voice Transcription Settings (Gemini)
 	voiceTranscription: {
 		enabled: true,
-		model: 'whisper-1',
+		model: 'gemini-2.5-flash',
 		language: undefined,
 		tempDir: './temp_audio'
 	},

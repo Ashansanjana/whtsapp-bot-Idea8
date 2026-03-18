@@ -7,7 +7,7 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-const openaiService = require('./openai');
+const geminiService = require('./gemini');
 const voiceService = require('./voice');
 const logger = require('../utils/logger');
 
@@ -78,7 +78,7 @@ function initializeClient(configuration) {
 
   client = new Client({
     authStrategy: new LocalAuth({
-      clientId: 'pizzabot-session',
+      clientId: 'buildstart-session',
       dataPath: SESSION_PATH
     }),
     webVersionCache: {
@@ -280,12 +280,27 @@ async function handleMessage(message) {
       }
     }
 
+    // Handle Location Messages
+    if (message.type === 'location') {
+      try {
+        const { latitude, longitude } = message.location;
+        console.log(`📍 Location received: ${latitude}, ${longitude}`);
+        // Convert location object to text for the AI
+        message.body = `[User sent Current Location: https://www.google.com/maps?q=${latitude},${longitude}]`;
+      } catch (locError) {
+        console.error('❌ Error processing location:', locError);
+      }
+    } else if (message.type === 'live_location') {
+      // AI cannot track live location, inform it so it can tell the user
+      message.body = `[User sent Live Location (Not Supported). Prompt user to send 'Current Location' instead.]`;
+    }
+
     const messageBody = message.body.toLowerCase();
     let replied = false;
 
     // AI Auto-Reply Logic
     if (config.aiBot && config.aiBot.enabled) {
-      const result = await openaiService.processMessage(message, customerInfo, config);
+      const result = await geminiService.processMessage(message, customerInfo, config);
 
       if (result.success && result.reply) {
         try {

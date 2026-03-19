@@ -52,12 +52,13 @@ async function processMessage(message, customerInfo, config) {
     }
 
     const conversationStatus = isNewConversation
-      ? "🆕 CONVERSATION STATUS: This is a NEW conversation (no prior history). You MUST show the language selection prompt."
-      : "🔄 CONVERSATION STATUS: This is a CONTINUING conversation. DO NOT show language selection unless explicitly requested.";
+      ? "🆕 CONVERSATION STATUS: This is a NEW conversation (no prior history). Start with STEP 1 greeting."
+      : "🔄 CONVERSATION STATUS: This is a CONTINUING conversation.";
 
     const systemPromptWithDate = `CURRENT DATE AND TIME: ${currentDateTime} (Sri Lanka Time)
 
 IMPORTANT: Use this current date/time to check operating hours (10:00 AM – 11:00 PM).
+IMPORTANT: NEVER output any internal thinking processes, reasoning, or "scratchpad" text. Respond ONLY with the final message intended for the user. DO NOT use phrases like "This is a thinking process" or "I need to...".
 
 ${conversationStatus}
 

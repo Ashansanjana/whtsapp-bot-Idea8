@@ -181,26 +181,11 @@ function setupEventHandlers() {
     scheduledMessages.forEach(interval => clearInterval(interval));
     scheduledMessages.clear();
 
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      reconnectAttempts++;
-      console.log(`🔄 Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-
-      setTimeout(async () => {
-        try {
-          console.log('🔄 Reinitializing client...');
-          await client.initialize();
-        } catch (error) {
-          console.error('❌ Reconnection failed:', error.message);
-          if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            console.log('❌ Max reconnection attempts reached. Clearing session...');
-            await clearSessionAndRestart();
-          }
-        }
-      }, 5000);
-    } else {
-      console.log('❌ Max reconnection attempts reached');
-      await clearSessionAndRestart();
-    }
+    // Exit cleanly so nodemon / process manager restarts the bot fresh.
+    // Re-calling client.initialize() accumulates duplicate event listeners
+    // which causes messages to be sent multiple times.
+    console.log('🔄 Restarting process for clean reconnect...');
+    setTimeout(() => process.exit(1), 3000);
   });
 
   // Loading screen
@@ -308,8 +293,9 @@ async function handleMessage(message) {
           console.log('✅ AI replied:', result.reply);
           replied = true;
         } catch (sendError) {
-          console.error('❌ Error sending AI reply, trying client fallback:', sendError.message);
-          await client.sendMessage(message.from, result.reply);
+          // Do NOT retry with client.sendMessage — the original send may have
+          // already gone through, and retrying causes duplicate messages.
+          console.error('❌ Error sending AI reply (not retrying to avoid duplicates):', sendError.message);
           replied = true;
         }
       } else if (!config.aiBot.fallbackToDefault) {
@@ -325,8 +311,7 @@ async function handleMessage(message) {
             await chat.sendMessage(response);
             console.log(`✅ Auto-replied with keyword: "${keyword}"`);
           } catch (sendError) {
-            console.error('❌ Error sending keyword reply:', sendError.message);
-            await client.sendMessage(message.from, response);
+            console.error('❌ Error sending keyword reply (not retrying to avoid duplicates):', sendError.message);
           }
           replied = true;
           break;
@@ -340,8 +325,7 @@ async function handleMessage(message) {
         await chat.sendMessage(config.autoReply.defaultReply);
         console.log('✅ Auto-replied with default message');
       } catch (sendError) {
-        console.error('❌ Error sending default reply:', sendError.message);
-        await client.sendMessage(message.from, config.autoReply.defaultReply);
+        console.error('❌ Error sending default reply (not retrying to avoid duplicates):', sendError.message);
       }
     }
 
